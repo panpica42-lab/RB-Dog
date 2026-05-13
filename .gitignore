@@ -1,0 +1,34 @@
+.git/
+.git-codex/
+.agents/
+.codex/
+
+# Local editor state
+.vscode/
+
+# Build outputs and caches
+build/
+cmake-build-*/
+CMakeFiles/
+CMakeCache.txt
+compile_commands.json
+*.o
+*.obj
+*.a
+!lib/libquadruped_sdk.a
+*.so
+*.dll
+*.exe
+*.lib
+
+# Runtime/generated files
+captures/
+logs/
+*.log
+__pycache__/
+*.py[cod]
+hbuilder_quadruped_controller/unpackage/
+
+# OS files
+.DS_Store
+Thumbs.db

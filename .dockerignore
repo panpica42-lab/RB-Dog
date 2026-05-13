@@ -1,0 +1,21 @@
+.agents/
+.codex/
+.git/
+__pycache__/
+*/__pycache__/
+*.pyc
+*.o
+*.so
+*.a
+bin/
+lib/
+captures/
+CS-DOG1.STEP
+2025.12.27 - 四足机器人二次开发版本开发手册.pdf
+掌机APP与机器狗通信协议v2.0-260115.docx
+*.pdf
+*.docx
+*.zip
+*.tar
+*.tar.gz
+*.log

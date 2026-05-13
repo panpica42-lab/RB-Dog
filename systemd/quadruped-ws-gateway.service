@@ -1,0 +1,15 @@
+[Unit]
+Description=Quadruped WebSocket UDP Gateway
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=orangepi
+WorkingDirectory=/home/orangepi/quadruped_dev_sdk
+ExecStart=/usr/bin/python3 /home/orangepi/quadruped_dev_sdk/tools/ws_gateway.py --listen-host 0.0.0.0 --listen-port 9001 --dog-ip 192.168.96.2 --dog-port 8080
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target

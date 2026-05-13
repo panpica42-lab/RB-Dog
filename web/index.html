@@ -1,0 +1,1146 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>四足机器人控制台</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #f6f7f9;
+      --panel: #ffffff;
+      --ink: #18202a;
+      --muted: #667085;
+      --line: #d8dee8;
+      --accent: #1463ff;
+      --danger: #c91f32;
+      --ok: #12805c;
+      --warn: #996a00;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--ink);
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+    header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      padding: 14px 18px;
+      border-bottom: 1px solid var(--line);
+      background: var(--panel);
+      position: sticky;
+      top: 0;
+      z-index: 3;
+    }
+    h1 {
+      font-size: 18px;
+      margin: 0;
+      font-weight: 700;
+    }
+    main {
+      width: min(1180px, 100%);
+      margin: 0 auto;
+      padding: 16px;
+      display: grid;
+      grid-template-columns: 1.1fr 0.9fr;
+      gap: 16px;
+    }
+    section {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 14px;
+    }
+    h2 {
+      font-size: 15px;
+      margin: 0 0 12px;
+    }
+    .status-line {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 8px;
+      color: var(--muted);
+      font-size: 13px;
+    }
+    .dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: var(--warn);
+    }
+    .dot.ok { background: var(--ok); }
+    .dot.bad { background: var(--danger); }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 10px;
+    }
+    .metric {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 10px;
+      min-height: 70px;
+    }
+    .metric span {
+      color: var(--muted);
+      font-size: 12px;
+    }
+    .metric strong {
+      display: block;
+      margin-top: 8px;
+      font-size: 20px;
+    }
+    button, select {
+      border: 1px solid var(--line);
+      background: #fff;
+      color: var(--ink);
+      min-height: 42px;
+      border-radius: 8px;
+      font: inherit;
+      font-size: 14px;
+    }
+    button {
+      cursor: pointer;
+      font-weight: 650;
+    }
+    button.primary {
+      background: var(--accent);
+      color: #fff;
+      border-color: var(--accent);
+    }
+    button.danger {
+      background: var(--danger);
+      color: #fff;
+      border-color: var(--danger);
+    }
+    button.soft {
+      background: #f7f9fc;
+    }
+    button:active { transform: translateY(1px); }
+    .control-panel {
+      display: grid;
+      gap: 12px;
+    }
+    .control-row {
+      display: grid;
+      gap: 8px;
+    }
+    .control-row-title {
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 700;
+    }
+    .control-grid {
+      display: grid;
+      gap: 8px;
+    }
+    .control-grid.posture {
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+    }
+    .control-grid.system {
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+    .control-grid.actions {
+      grid-template-columns: minmax(150px, 1fr) minmax(150px, 1fr);
+    }
+    .control-grid.actions select {
+      grid-column: 1 / -1;
+    }
+    .control-panel button,
+    .control-panel select {
+      width: 100%;
+    }
+    .control-panel .wide {
+      grid-column: span 2;
+      font-weight: 750;
+    }
+    .drive {
+      display: grid;
+      grid-template-columns: 260px 1fr;
+      gap: 18px;
+      align-items: center;
+    }
+    .pad {
+      width: 240px;
+      height: 240px;
+      border-radius: 8px;
+      border: 1px solid var(--line);
+      background:
+        linear-gradient(90deg, transparent 49.5%, #d9e0ea 49.5%, #d9e0ea 50.5%, transparent 50.5%),
+        linear-gradient(0deg, transparent 49.5%, #d9e0ea 49.5%, #d9e0ea 50.5%, transparent 50.5%),
+        #fbfcfe;
+      position: relative;
+      touch-action: none;
+      user-select: none;
+    }
+    .stick {
+      width: 58px;
+      height: 58px;
+      border-radius: 50%;
+      background: var(--accent);
+      position: absolute;
+      left: 50%;
+      top: 50%;
+      transform: translate(-50%, -50%);
+      box-shadow: 0 10px 18px rgba(20, 99, 255, 0.25);
+    }
+    .sliders {
+      display: grid;
+      gap: 14px;
+    }
+    .turn-control {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+    }
+    .turn-control button {
+      min-height: 56px;
+      touch-action: none;
+    }
+    .turn-control button.active {
+      background: var(--accent);
+      border-color: var(--accent);
+      color: #fff;
+    }
+    label {
+      display: grid;
+      gap: 6px;
+      color: var(--muted);
+      font-size: 13px;
+    }
+    input[type="range"] {
+      width: 100%;
+    }
+    pre {
+      margin: 0;
+      min-height: 180px;
+      max-height: 300px;
+      overflow: auto;
+      padding: 10px;
+      background: #101826;
+      color: #d7e3f5;
+      border-radius: 8px;
+      font-size: 12px;
+      line-height: 1.45;
+    }
+    .camera-view {
+      width: 100%;
+      aspect-ratio: 4 / 3;
+      height: 480px;
+      max-height: 65vh;
+      overflow: hidden;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #101826;
+      position: relative;
+    }
+    .camera-view img {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+      display: none;
+    }
+    .camera-placeholder {
+      position: absolute;
+      inset: 0;
+      display: grid;
+      place-items: center;
+      color: #98a2b3;
+      font-size: 14px;
+    }
+    .pointcloud-view,
+    .octree-view {
+      width: 100%;
+      aspect-ratio: 16 / 9;
+      overflow: hidden;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #071017;
+      position: relative;
+      cursor: grab;
+      touch-action: none;
+      user-select: none;
+    }
+    .pointcloud-view:active,
+    .octree-view:active {
+      cursor: grabbing;
+    }
+    .pointcloud-view canvas,
+    .octree-view canvas {
+      width: 100%;
+      height: 100%;
+      display: block;
+    }
+    .pointcloud-actions {
+      display: flex;
+      gap: 10px;
+      margin: 10px 0;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+    .pointcloud-actions small {
+      color: #667085;
+    }
+    .span-2 { grid-column: span 2; }
+    .full { grid-column: 1 / -1; }
+    @media (max-width: 820px) {
+      main { grid-template-columns: 1fr; }
+      .grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .control-grid.posture,
+      .control-grid.system,
+      .control-grid.actions { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .drive { grid-template-columns: 1fr; }
+      .pad { width: min(100%, 280px); height: min(80vw, 280px); justify-self: center; }
+      .camera-view { height: 280px; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div>
+      <h1>四足机器人控制台</h1>
+      <div class="status-line"><i id="dot" class="dot"></i><span id="conn">连接中</span><span id="target"></span></div>
+    </div>
+    <button id="reconnect">重连</button>
+  </header>
+
+  <main>
+    <section class="full">
+      <h2>状态</h2>
+      <div class="grid">
+        <div class="metric"><span>电量</span><strong id="battery">--</strong></div>
+        <div class="metric"><span>运动模式</span><strong id="motion">--</strong></div>
+        <div class="metric"><span>运动模型</span><strong id="model">--</strong></div>
+        <div class="metric"><span>硬件故障</span><strong id="fault">--</strong></div>
+      </div>
+    </section>
+
+    <section class="full control-deck">
+      <h2>摇杆</h2>
+      <div class="drive">
+        <div id="pad" class="pad"><div id="stick" class="stick"></div></div>
+        <div class="sliders">
+          <div class="turn-control">
+            <button id="turnLeft" type="button">左转</button>
+            <button id="turnRight" type="button">右转</button>
+          </div>
+          <label>转向速度 <input id="turnSpeed" type="range" min="0.1" max="1" step="0.05" value="0.35"></label>
+          <label>限速 <input id="speed" type="range" min="0.1" max="1" step="0.05" value="0.35"></label>
+          <button data-cmd="stop">停止运动</button>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <h2>基础控制</h2>
+      <div class="control-panel">
+        <div class="control-row">
+          <div class="control-row-title">姿态与安全</div>
+          <div class="control-grid posture">
+            <button class="primary" data-cmd="reset">复位</button>
+            <button data-cmd="stand">站起</button>
+            <button data-cmd="lie">趴下</button>
+            <button class="danger" data-cmd="emergency">急停</button>
+            <button class="soft wide" data-cmd="stop">停止运动</button>
+            <button class="soft wide" id="imuReset">重启IMU</button>
+          </div>
+        </div>
+        <div class="control-row">
+          <div class="control-row-title">模式与开关</div>
+          <div class="control-grid system">
+            <select id="modelSelect">
+              <option value="0">越障模式</option>
+              <option value="1">高速模式</option>
+            </select>
+            <button id="obstacle">停障开关</button>
+            <button id="video">视频开关</button>
+          </div>
+        </div>
+        <div class="control-row">
+          <div class="control-row-title">动作库</div>
+          <div class="control-grid actions">
+            <select id="actionSelect">
+              <option value="">选择动作</option>
+              <option value="stand">站立</option>
+              <option value="wave">打招呼</option>
+              <option value="pee">撒尿</option>
+              <option value="jump">跳跃</option>
+              <option value="heart">比心</option>
+              <option value="new_year">拜年</option>
+              <option value="idle_mode">原地模式</option>
+            </select>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <h2>IMU</h2>
+      <div class="grid">
+        <div class="metric"><span>Roll</span><strong id="roll">--</strong></div>
+        <div class="metric"><span>Pitch</span><strong id="pitch">--</strong></div>
+        <div class="metric"><span>Yaw</span><strong id="yaw">--</strong></div>
+        <div class="metric"><span>Frame</span><strong id="frame">--</strong></div>
+      </div>
+    </section>
+
+    <section class="full">
+      <h2>RealSense RGB</h2>
+      <div class="status-line"><i id="cameraDot" class="dot"></i><span id="cameraStatus">等待相机画面</span></div>
+      <div class="camera-view">
+        <img id="cameraFrame" alt="RealSense RGB">
+        <span id="cameraPlaceholder" class="camera-placeholder">暂无画面</span>
+      </div>
+    </section>
+
+    <section class="full">
+      <h2>RealSense 点云</h2>
+      <div class="status-line"><i id="pointcloudDot" class="dot"></i><span id="pointcloudStatus">等待点云</span></div>
+      <div class="pointcloud-actions">
+        <button id="pointcloudToggle" type="button">开启点云采集</button>
+        <small>仅需要查看点云时开启，离开页面或切后台会自动关闭。</small>
+      </div>
+      <div class="pointcloud-view">
+        <canvas id="pointcloudCanvas"></canvas>
+      </div>
+    </section>
+
+    <section class="full">
+      <h2>RealSense 八叉树图</h2>
+      <div class="status-line"><i id="octreeDot" class="dot"></i><span id="octreeStatus">等待点云</span></div>
+      <div class="octree-view">
+        <canvas id="octreeCanvas"></canvas>
+      </div>
+    </section>
+
+    <section class="full">
+      <h2>消息</h2>
+      <pre id="log"></pre>
+    </section>
+  </main>
+
+  <script>
+    const state = {
+      ws: null,
+      connected: false,
+      obstacle: true,
+      video: false,
+      drive: { frontback: 0, leftright: 0, turn: 0 },
+      turnTimer: null,
+      moveTimer: null,
+      turnDirection: 0,
+      lastMove: 0,
+      lastCameraFrame: 0,
+      cameraDecoding: false,
+      pendingCameraFrame: null,
+      lastPointcloudFrame: 0,
+      pointcloudPoints: [],
+      pointcloudRaster: null,
+      pointcloudRasterDecoding: false,
+      pendingPointcloudRaster: null,
+      pendingPointcloudBinary: null,
+      pointcloudYaw: -0.2,
+      pointcloudPitch: -0.28,
+      pointcloudZoom: 1,
+      pointcloudDragging: false,
+      pointcloudPointer: null,
+      pointcloudEnabled: false,
+      octreeDepth: 7,
+      octreeMaxVoxels: 12000,
+      octreeFrameInterval: 33,
+      lastOctreeDraw: 0
+    };
+
+    const el = id => document.getElementById(id);
+    const log = message => {
+      const line = `[${new Date().toLocaleTimeString()}] ${message}`;
+      el('log').textContent = `${line}\n${el('log').textContent}`.slice(0, 6000);
+    };
+
+    function connect() {
+      if (state.ws) state.ws.close();
+      const url = `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws`;
+      const ws = new WebSocket(url);
+      ws.binaryType = 'arraybuffer';
+      state.ws = ws;
+      ws.onopen = () => setConnected(true);
+      ws.onclose = () => setConnected(false);
+      ws.onerror = () => setConnected(false);
+      ws.onmessage = event => {
+        if (event.data instanceof ArrayBuffer) {
+          handleBinaryMessage(event.data);
+          return;
+        }
+        handleMessage(JSON.parse(event.data));
+      };
+    }
+
+    function setConnected(value) {
+      state.connected = value;
+      el('dot').className = `dot ${value ? 'ok' : 'bad'}`;
+      el('conn').textContent = value ? '已连接' : '未连接';
+      if (!value) {
+        state.pointcloudEnabled = false;
+        updatePointcloudToggle();
+      }
+      if (!value) setTimeout(() => {
+        if (!state.connected) connect();
+      }, 1500);
+    }
+
+    function send(payload) {
+      if (!state.ws || state.ws.readyState !== WebSocket.OPEN) return;
+      state.ws.send(JSON.stringify(payload));
+    }
+
+    function handleMessage(message) {
+      if (message.type === 'hello') {
+        el('target').textContent = message.dog;
+        log(`连接机器狗 ${message.dog}`);
+        send({ type: 'camera', enabled: true });
+        updateStatus(message.status || {});
+        updateImu(message.imu || {});
+      } else if (message.type === 'status') {
+        updateStatus(message.status || {});
+      } else if (message.type === 'snapshot') {
+        updateStatus(message.status || {});
+        updateImu(message.imu || {});
+      } else if (message.type === 'imu') {
+        updateImu(message.imu || {});
+      } else if (message.type === 'camera_frame') {
+        updateCameraFrame(message);
+      } else if (message.type === 'camera_status') {
+        updateCameraStatus(message.ok, message.message);
+      } else if (message.type === 'pointcloud_frame') {
+        updatePointcloudFrame(message);
+      } else if (message.type === 'pointcloud_status') {
+        updatePointcloudStatus(message.ok, message.message);
+      } else if (message.type === 'imu_status') {
+        log(message.message || 'IMU 状态更新');
+      } else if (message.type === 'command_result') {
+        log(`命令响应 ${JSON.stringify(message.result)}`);
+      } else if (message.type === 'sent') {
+        log(`已发送 ${JSON.stringify(message.command)}`);
+      } else if (message.type === 'error') {
+        log(message.message);
+      }
+    }
+
+    function handleBinaryMessage(buffer) {
+      const metadata = state.pendingPointcloudBinary;
+      state.pendingPointcloudBinary = null;
+      if (!metadata || !state.pointcloudEnabled) return;
+      const points = new Float32Array(buffer);
+      state.pointcloudRaster = null;
+      state.pendingPointcloudRaster = null;
+      state.pointcloudPoints = points;
+      drawPointcloud();
+      drawOctree();
+      state.lastPointcloudFrame = metadata.time || Date.now() / 1000;
+      updatePointcloudStatus(true, `3D 点云 ${metadata.count || points.length / 6} 点`);
+    }
+
+    function updateStatus(status) {
+      el('battery').textContent = value(status.battery ?? status.battery_level, '%');
+      el('motion').textContent = motionName(status.motion_mode);
+      el('model').textContent = Number(status.model) === 1 ? '高速' : '越障';
+      el('fault').textContent = Number(status.hardware_error) ? '有故障' : '正常';
+    }
+
+    function updateImu(imu) {
+      const euler = imu.euler || imu.rpy || quaternionToEuler(imu.orientation) || {};
+      el('roll').textContent = angle(euler.roll ?? imu.roll);
+      el('pitch').textContent = angle(euler.pitch ?? imu.pitch);
+      el('yaw').textContent = angle(euler.yaw ?? imu.yaw);
+      el('frame').textContent = imu.frame_id || '--';
+    }
+
+    function quaternionToEuler(orientation) {
+      if (!orientation) return null;
+      const w = Number(orientation.w ?? 1);
+      const x = Number(orientation.x ?? 0);
+      const y = Number(orientation.y ?? 0);
+      const z = Number(orientation.z ?? 0);
+      if (![w, x, y, z].every(Number.isFinite)) return null;
+      const sinrCosp = 2 * (w * x + y * z);
+      const cosrCosp = 1 - 2 * (x * x + y * y);
+      const roll = Math.atan2(sinrCosp, cosrCosp);
+      const sinp = 2 * (w * y - z * x);
+      const pitch = Math.abs(sinp) >= 1 ? Math.sign(sinp) * Math.PI / 2 : Math.asin(sinp);
+      const sinyCosp = 2 * (w * z + x * y);
+      const cosyCosp = 1 - 2 * (y * y + z * z);
+      const yaw = Math.atan2(sinyCosp, cosyCosp);
+      return { roll, pitch, yaw };
+    }
+
+    function updateCameraStatus(ok, message) {
+      el('cameraDot').className = `dot ${ok ? 'ok' : 'bad'}`;
+      el('cameraStatus').textContent = message || (ok ? '相机在线' : '相机不可用');
+    }
+
+    function updateCameraFrame(message) {
+      if (!message.data) return;
+      if (state.cameraDecoding) {
+        state.pendingCameraFrame = message;
+        return;
+      }
+      state.cameraDecoding = true;
+      const img = el('cameraFrame');
+      img.onerror = () => {
+        state.cameraDecoding = false;
+        updateCameraStatus(false, 'RGB 解码失败');
+        flushPendingCameraFrame();
+      };
+      img.onload = () => {
+        state.cameraDecoding = false;
+        updateCameraStatus(true, `RGB ${message.width || '--'}x${message.height || '--'}`);
+        flushPendingCameraFrame();
+      };
+      img.src = `data:image/jpeg;base64,${message.data}`;
+      img.style.display = 'block';
+      el('cameraPlaceholder').style.display = 'none';
+      state.lastCameraFrame = message.time || Date.now() / 1000;
+      updateCameraStatus(true, `RGB ${message.width || '--'}x${message.height || '--'}`);
+    }
+
+    function flushPendingCameraFrame() {
+      if (!state.pendingCameraFrame) return;
+      const next = state.pendingCameraFrame;
+      state.pendingCameraFrame = null;
+      updateCameraFrame(next);
+    }
+
+    function updatePointcloudStatus(ok, message) {
+      el('pointcloudDot').className = `dot ${ok ? 'ok' : 'bad'}`;
+      el('pointcloudStatus').textContent = message || (ok ? '点云在线' : '点云不可用');
+    }
+
+    function updatePointcloudFrame(message) {
+      if (!state.pointcloudEnabled) return;
+      if (message.format === 'xyzrgb_float32' && message.encoding === 'binary') {
+        state.pendingPointcloudBinary = message;
+        return;
+      }
+      if ((message.format === 'pointcloud_raster_jpeg' || message.format === 'rgbd_fused_jpeg' || message.format === 'rgbd_raster_jpeg' || message.format === 'depth_colormap_jpeg') && message.data) {
+        updatePointcloudRaster(message);
+        return;
+      }
+      const points = message.points || [];
+      if (!points.length) return;
+      state.pointcloudRaster = null;
+      state.pendingPointcloudRaster = null;
+      state.pointcloudPoints = points;
+      drawPointcloud();
+      drawOctree();
+      state.lastPointcloudFrame = message.time || Date.now() / 1000;
+      updatePointcloudStatus(true, `3D 点云 ${message.count || points.length / 6} 点`);
+    }
+
+    function updatePointcloudRaster(message) {
+      if (state.pointcloudRasterDecoding) {
+        state.pendingPointcloudRaster = message;
+        return;
+      }
+      state.pointcloudRasterDecoding = true;
+      const image = new Image();
+      image.onerror = () => {
+        state.pointcloudRasterDecoding = false;
+        updatePointcloudStatus(false, '栅格图解码失败');
+        flushPendingPointcloudRaster();
+      };
+      image.onload = () => {
+        state.pointcloudRaster = image;
+        state.pointcloudRasterDecoding = false;
+        drawPointcloudRaster(image);
+        state.lastPointcloudFrame = message.time || Date.now() / 1000;
+        const label = message.format === 'pointcloud_raster_jpeg'
+          ? '点云图'
+          : (message.format === 'rgbd_fused_jpeg'
+            ? 'RGBD 融合图'
+            : (message.format === 'rgbd_raster_jpeg' ? 'RGBD 栅格' : '深度栅格'));
+        updatePointcloudStatus(true, `${label} ${message.width || '--'}x${message.height || '--'}`);
+        flushPendingPointcloudRaster();
+      };
+      image.src = `data:image/jpeg;base64,${message.data}`;
+    }
+
+    function flushPendingPointcloudRaster() {
+      if (!state.pendingPointcloudRaster) return;
+      const next = state.pendingPointcloudRaster;
+      state.pendingPointcloudRaster = null;
+      updatePointcloudRaster(next);
+    }
+
+    function resizeCanvas(canvas) {
+      const rect = canvas.getBoundingClientRect();
+      const scale = window.devicePixelRatio || 1;
+      const width = Math.max(1, Math.floor(rect.width * scale));
+      const height = Math.max(1, Math.floor(rect.height * scale));
+      if (canvas.width !== width || canvas.height !== height) {
+        canvas.width = width;
+        canvas.height = height;
+      }
+      return { width, height, scale };
+    }
+
+    function drawPointcloud() {
+      if (state.pointcloudRaster) {
+        drawPointcloudRaster(state.pointcloudRaster);
+        return;
+      }
+      const points = state.pointcloudPoints;
+      const canvas = el('pointcloudCanvas');
+      const { width, height, scale } = resizeCanvas(canvas);
+      const ctx = canvas.getContext('2d');
+      ctx.fillStyle = '#071017';
+      ctx.fillRect(0, 0, width, height);
+      drawPointcloudGrid(ctx, width, height, scale);
+      if (!points.length) return;
+
+      const centerX = width / 2;
+      const centerY = height * 0.52;
+      const focal = Math.min(width, height) * 0.72 * state.pointcloudZoom;
+      const pointCount = points.length / 6;
+      const dotSize = Math.max(1, Math.round(scale * (pointCount < 5000 ? 2.4 : 1.6)));
+      const cosY = Math.cos(state.pointcloudYaw);
+      const sinY = Math.sin(state.pointcloudYaw);
+      const cosP = Math.cos(state.pointcloudPitch);
+      const sinP = Math.sin(state.pointcloudPitch);
+      const projected = [];
+
+      for (let i = 0; i < points.length; i += 6) {
+        const x = Number(points[i]);
+        const y = Number(points[i + 1]);
+        const z = Number(points[i + 2]);
+        if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(z) || z <= 0) continue;
+
+        const zx = x * cosY - z * sinY;
+        const zz = x * sinY + z * cosY;
+        const yy = y * cosP - zz * sinP;
+        const depth = y * sinP + zz * cosP + 2.4;
+        if (depth <= 0.08) continue;
+
+        const perspective = focal / depth;
+        const px = centerX + zx * perspective;
+        const py = centerY + yy * perspective;
+        if (px < 0 || px >= width || py < 0 || py >= height) continue;
+        projected.push({
+          x: px,
+          y: py,
+          depth,
+          color: `rgb(${points[i + 3] || 0},${points[i + 4] || 0},${points[i + 5] || 0})`
+        });
+      }
+
+      projected.sort((a, b) => b.depth - a.depth);
+      ctx.globalAlpha = 0.92;
+      for (const point of projected) {
+        ctx.fillStyle = point.color;
+        ctx.fillRect(point.x, point.y, dotSize, dotSize);
+      }
+      ctx.globalAlpha = 1;
+    }
+
+    function drawOctree(force = false) {
+      const now = performance.now();
+      if (!force && now - state.lastOctreeDraw < state.octreeFrameInterval) return;
+      state.lastOctreeDraw = now;
+      const canvas = el('octreeCanvas');
+      const { width, height, scale } = resizeCanvas(canvas);
+      const ctx = canvas.getContext('2d');
+      ctx.fillStyle = '#071017';
+      ctx.fillRect(0, 0, width, height);
+
+      const points = state.pointcloudPoints;
+      if (!points.length) {
+        updateOctreeStatus(false, state.pointcloudEnabled ? '等待点云帧' : '点云采集已关闭');
+        return;
+      }
+
+      const depth = state.octreeDepth;
+      const cells = 1 << depth;
+      const bounds = {
+        minX: -2.0,
+        maxX: 2.0,
+        minY: -1.6,
+        maxY: 1.6,
+        minZ: 0.05,
+        maxZ: 5.0
+      };
+      const voxels = new Map();
+      for (let i = 0; i < points.length; i += 6) {
+        const x = points[i];
+        const y = points[i + 1];
+        const z = points[i + 2];
+        if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(z)) continue;
+        if (x < bounds.minX || x >= bounds.maxX || y < bounds.minY || y >= bounds.maxY || z < bounds.minZ || z >= bounds.maxZ) continue;
+        const ix = Math.floor((x - bounds.minX) / (bounds.maxX - bounds.minX) * cells);
+        const iy = Math.floor((y - bounds.minY) / (bounds.maxY - bounds.minY) * cells);
+        const iz = Math.floor((z - bounds.minZ) / (bounds.maxZ - bounds.minZ) * cells);
+        const key = `${ix},${iy},${iz}`;
+        let voxel = voxels.get(key);
+        if (!voxel) {
+          voxel = { ix, iy, iz, count: 0, r: 0, g: 0, b: 0 };
+          voxels.set(key, voxel);
+        }
+        voxel.count += 1;
+        voxel.r += points[i + 3] || 0;
+        voxel.g += points[i + 4] || 0;
+        voxel.b += points[i + 5] || 0;
+      }
+
+      let list = Array.from(voxels.values());
+      if (!list.length) {
+        updateOctreeStatus(false, '八叉树无有效体素');
+        return;
+      }
+      list.sort((a, b) => b.count - a.count);
+      if (list.length > state.octreeMaxVoxels) list = list.slice(0, state.octreeMaxVoxels);
+
+      const cosY = Math.cos(state.pointcloudYaw);
+      const sinY = Math.sin(state.pointcloudYaw);
+      const cosP = Math.cos(state.pointcloudPitch);
+      const sinP = Math.sin(state.pointcloudPitch);
+      const focal = Math.min(width, height) * 0.7 * state.pointcloudZoom;
+      const centerX = width / 2;
+      const centerY = height * 0.52;
+      const cellX = (bounds.maxX - bounds.minX) / cells;
+      const cellY = (bounds.maxY - bounds.minY) / cells;
+      const cellZ = (bounds.maxZ - bounds.minZ) / cells;
+      const projected = [];
+
+      for (const voxel of list) {
+        const x = bounds.minX + (voxel.ix + 0.5) * cellX;
+        const y = bounds.minY + (voxel.iy + 0.5) * cellY;
+        const z = bounds.minZ + (voxel.iz + 0.5) * cellZ;
+        const zx = x * cosY - z * sinY;
+        const zz = x * sinY + z * cosY;
+        const yy = y * cosP - zz * sinP;
+        const viewDepth = y * sinP + zz * cosP + 2.4;
+        if (viewDepth <= 0.08) continue;
+        const perspective = focal / viewDepth;
+        const px = centerX + zx * perspective;
+        const py = centerY + yy * perspective;
+        if (px < -20 || px >= width + 20 || py < -20 || py >= height + 20) continue;
+        const size = Math.max(1, Math.min(5, perspective * Math.max(cellX, cellY, cellZ) * 0.58));
+        projected.push({
+          x: px,
+          y: py,
+          depth: viewDepth,
+          size,
+          color: `rgb(${Math.round(voxel.r / voxel.count)},${Math.round(voxel.g / voxel.count)},${Math.round(voxel.b / voxel.count)})`
+        });
+      }
+
+      projected.sort((a, b) => b.depth - a.depth);
+      ctx.globalAlpha = 1;
+      for (const voxel of projected) {
+        ctx.fillStyle = voxel.color;
+        const size = Math.max(1, Math.round(voxel.size));
+        if (size <= 2) {
+          ctx.fillRect(Math.round(voxel.x), Math.round(voxel.y), size, size);
+        } else {
+          ctx.beginPath();
+          ctx.arc(voxel.x, voxel.y, size / 2, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      }
+      ctx.globalAlpha = 1;
+      updateOctreeStatus(true, `八叉树深度 ${depth}，体素 ${list.length}/${voxels.size}`);
+    }
+
+    function updateOctreeStatus(ok, message) {
+      el('octreeDot').className = `dot ${ok ? 'ok' : 'bad'}`;
+      el('octreeStatus').textContent = message || (ok ? '八叉树在线' : '等待点云');
+    }
+
+    function drawPointcloudGrid(ctx, width, height, scale) {
+      const cx = width / 2;
+      const cy = height * 0.72;
+      const gap = Math.min(width, height) / 10;
+      ctx.save();
+      ctx.strokeStyle = 'rgba(54, 241, 244, 0.16)';
+      ctx.lineWidth = Math.max(1, scale);
+      for (let i = -5; i <= 5; i += 1) {
+        ctx.beginPath();
+        ctx.moveTo(cx + i * gap, cy - 5 * gap * 0.36);
+        ctx.lineTo(cx + i * gap, cy + 5 * gap * 0.36);
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.moveTo(cx - 5 * gap, cy + i * gap * 0.36);
+        ctx.lineTo(cx + 5 * gap, cy + i * gap * 0.36);
+        ctx.stroke();
+      }
+      ctx.restore();
+    }
+
+    function drawPointcloudRaster(image) {
+      const canvas = el('pointcloudCanvas');
+      const { width, height } = resizeCanvas(canvas);
+      const ctx = canvas.getContext('2d');
+      ctx.fillStyle = '#071017';
+      ctx.fillRect(0, 0, width, height);
+      const scale = Math.min(width / image.width, height / image.height);
+      const drawWidth = image.width * scale;
+      const drawHeight = image.height * scale;
+      const left = (width - drawWidth) / 2;
+      const top = (height - drawHeight) / 2;
+      ctx.imageSmoothingEnabled = false;
+      ctx.drawImage(image, left, top, drawWidth, drawHeight);
+    }
+
+    function updatePointcloudToggle() {
+      const button = el('pointcloudToggle');
+      button.textContent = state.pointcloudEnabled ? '关闭点云采集' : '开启点云采集';
+      button.classList.toggle('primary', state.pointcloudEnabled);
+      if (!state.pointcloudEnabled) updatePointcloudStatus(false, '点云采集已关闭');
+    }
+
+    function setPointcloudEnabled(enabled) {
+      state.pointcloudEnabled = Boolean(enabled);
+      updatePointcloudToggle();
+      send({ type: 'pointcloud', enabled: state.pointcloudEnabled });
+    }
+
+    function value(input, suffix = '') {
+      return input === undefined || input === null || input === '' ? '--' : `${input}${suffix}`;
+    }
+
+    function angle(input) {
+      if (input === undefined || input === null || input === '') return '--';
+      const number = Number(input);
+      const degree = Math.abs(number) <= Math.PI * 2 ? number * 180 / Math.PI : number;
+      return `${degree.toFixed(1)}°`;
+    }
+
+    function motionName(mode) {
+      if (mode === undefined || mode === null || mode === '') return '--';
+      const number = Number(mode);
+      if (!Number.isNaN(number)) {
+        return ['未回零', '趴地', '站立', '低身位', '翻倒'][number] || `未知(${mode})`;
+      }
+      const normalized = String(mode).toLowerCase();
+      if (normalized.includes('stand')) return '站立';
+      if (normalized.includes('lying') || normalized.includes('lie')) return '趴地';
+      if (normalized.includes('reset')) return '未回零';
+      if (normalized.includes('low')) return '低身位';
+      if (normalized.includes('fall')) return '翻倒';
+      return String(mode);
+    }
+
+    function sendMove(force = false) {
+      const now = performance.now();
+      if (!force && now - state.lastMove < 80) return;
+      state.lastMove = now;
+      send({ type: 'move', ...state.drive });
+    }
+
+    function startMoveRepeat() {
+      if (state.moveTimer) return;
+      state.moveTimer = setInterval(() => {
+        if (!dragging && !state.turnDirection) {
+          stopMoveRepeat();
+          return;
+        }
+        sendMove(true);
+      }, 80);
+    }
+
+    function stopMoveRepeat() {
+      if (!state.moveTimer) return;
+      clearInterval(state.moveTimer);
+      state.moveTimer = null;
+    }
+
+    document.querySelectorAll('[data-cmd]').forEach(button => {
+      button.addEventListener('click', () => send({ type: button.dataset.cmd }));
+    });
+
+    el('reconnect').addEventListener('click', connect);
+    el('modelSelect').addEventListener('change', event => send({ type: 'model', value: Number(event.target.value) }));
+    const menuCommands = {
+      stand: { type: 'stand' },
+      wave: { type: 'action', code: 11 },
+      pee: { type: 'action', code: 5 },
+      jump: { type: 'action', code: 2 },
+      heart: { type: 'action', code: 14 },
+      new_year: { type: 'action', code: 15 },
+      idle_mode: { type: 'stop' }
+    };
+
+    el('actionSelect').addEventListener('change', event => {
+      const command = menuCommands[event.target.value];
+      if (command) send(command);
+      event.target.value = '';
+    });
+    el('obstacle').addEventListener('click', () => {
+      state.obstacle = !state.obstacle;
+      send({ type: 'obstacle', enabled: state.obstacle });
+    });
+    el('video').addEventListener('click', () => {
+      state.video = !state.video;
+      send({ type: 'video', enabled: state.video });
+    });
+    el('imuReset').addEventListener('click', () => {
+      send({ type: 'imu_reset' });
+      log('已请求重启 IMU 数据流');
+    });
+    el('pointcloudToggle').addEventListener('click', () => {
+      setPointcloudEnabled(!state.pointcloudEnabled);
+    });
+
+    function startPointcloudDrag(event) {
+      state.pointcloudDragging = true;
+      state.pointcloudPointer = { x: event.clientX, y: event.clientY };
+      event.currentTarget.setPointerCapture(event.pointerId);
+    }
+    function movePointcloudDrag(event) {
+      if (!state.pointcloudDragging || !state.pointcloudPointer) return;
+      const dx = event.clientX - state.pointcloudPointer.x;
+      const dy = event.clientY - state.pointcloudPointer.y;
+      state.pointcloudPointer = { x: event.clientX, y: event.clientY };
+      state.pointcloudYaw += dx * 0.008;
+      state.pointcloudPitch = Math.max(-1.35, Math.min(1.1, state.pointcloudPitch + dy * 0.008));
+      drawPointcloud();
+      drawOctree(true);
+    }
+    function stopPointcloudDrag() {
+      state.pointcloudDragging = false;
+      state.pointcloudPointer = null;
+    }
+    function zoomPointcloudView(event) {
+      event.preventDefault();
+      const factor = event.deltaY > 0 ? 0.9 : 1.1;
+      state.pointcloudZoom = Math.max(0.45, Math.min(3, state.pointcloudZoom * factor));
+      drawPointcloud();
+      drawOctree(true);
+    }
+    document.querySelectorAll('.pointcloud-view, .octree-view').forEach(view => {
+      view.addEventListener('pointerdown', startPointcloudDrag);
+      view.addEventListener('pointermove', movePointcloudDrag);
+      view.addEventListener('pointerup', stopPointcloudDrag);
+      view.addEventListener('pointercancel', stopPointcloudDrag);
+      view.addEventListener('lostpointercapture', stopPointcloudDrag);
+      view.addEventListener('wheel', zoomPointcloudView, { passive: false });
+    });
+    window.addEventListener('resize', () => {
+      drawPointcloud();
+      drawOctree(true);
+    });
+    window.addEventListener('pagehide', () => setPointcloudEnabled(false));
+    window.addEventListener('beforeunload', () => setPointcloudEnabled(false));
+    document.addEventListener('visibilitychange', () => {
+      if (document.hidden) setPointcloudEnabled(false);
+    });
+    updatePointcloudToggle();
+
+    function getTurnSpeed() {
+      return Number(el('turnSpeed').value);
+    }
+
+    function setTurnDirection(direction) {
+      state.turnDirection = direction;
+      state.drive.turn = Number((direction * getTurnSpeed()).toFixed(2));
+      el('turnLeft').classList.toggle('active', direction < 0);
+      el('turnRight').classList.toggle('active', direction > 0);
+      sendMove(true);
+    }
+
+    function startTurn(direction) {
+      stopTurn(false);
+      setTurnDirection(direction);
+      startMoveRepeat();
+      state.turnTimer = setInterval(() => setTurnDirection(direction), 100);
+    }
+
+    function stopTurn(sendStop = true) {
+      if (state.turnTimer) {
+        clearInterval(state.turnTimer);
+        state.turnTimer = null;
+      }
+      state.turnDirection = 0;
+      state.drive.turn = 0;
+      el('turnLeft').classList.remove('active');
+      el('turnRight').classList.remove('active');
+      if (sendStop) sendMove(true);
+      if (!dragging) stopMoveRepeat();
+    }
+
+    function bindTurnButton(button, direction) {
+      button.addEventListener('pointerdown', event => {
+        event.preventDefault();
+        button.setPointerCapture(event.pointerId);
+        startTurn(direction);
+      });
+      button.addEventListener('pointerup', () => stopTurn());
+      button.addEventListener('pointercancel', () => stopTurn());
+      button.addEventListener('lostpointercapture', () => stopTurn());
+    }
+
+    bindTurnButton(el('turnLeft'), 1);
+    bindTurnButton(el('turnRight'), -1);
+    el('turnSpeed').addEventListener('input', () => {
+      if (state.turnDirection) setTurnDirection(state.turnDirection);
+    });
+
+    const pad = el('pad');
+    const stick = el('stick');
+    let dragging = false;
+
+    function updatePad(event) {
+      const rect = pad.getBoundingClientRect();
+      const pointer = event.touches ? event.touches[0] : event;
+      const cx = rect.left + rect.width / 2;
+      const cy = rect.top + rect.height / 2;
+      const radius = rect.width / 2 - 29;
+      let dx = pointer.clientX - cx;
+      let dy = pointer.clientY - cy;
+      const distance = Math.hypot(dx, dy);
+      if (distance > radius) {
+        dx = dx / distance * radius;
+        dy = dy / distance * radius;
+      }
+      stick.style.transform = `translate(calc(-50% + ${dx}px), calc(-50% + ${dy}px))`;
+      const speed = Number(el('speed').value);
+      state.drive.leftright = Number((-dx / radius * speed).toFixed(2));
+      state.drive.frontback = Number((-dy / radius * speed).toFixed(2));
+      sendMove();
+    }
+
+    function resetPad() {
+      dragging = false;
+      stick.style.transform = 'translate(-50%, -50%)';
+      state.drive.frontback = 0;
+      state.drive.leftright = 0;
+      sendMove(true);
+      if (!state.turnDirection) stopMoveRepeat();
+    }
+
+    pad.addEventListener('pointerdown', event => {
+      dragging = true;
+      pad.setPointerCapture(event.pointerId);
+      updatePad(event);
+      startMoveRepeat();
+    });
+    pad.addEventListener('pointermove', event => {
+      if (dragging) updatePad(event);
+    });
+    pad.addEventListener('pointerup', resetPad);
+    pad.addEventListener('pointercancel', resetPad);
+
+    window.addEventListener('beforeunload', () => {
+      stopMoveRepeat();
+      send({ type: 'stop' });
+    });
+    window.addEventListener('pagehide', () => send({ type: 'camera', enabled: false }));
+    connect();
+  </script>
+</body>
+</html>
