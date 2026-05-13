@@ -123,7 +123,7 @@ def split_nmcli_line(line):
 
 
 class WifiProvisioner:
-    def __init__(self, iface="wlan0", dry_run=False, device_name="RoboDog", robot_port=9000, fw_version="1.0.0"):
+    def __init__(self, iface="wlan0", dry_run=False, device_name="RoboDog", robot_port=9001, fw_version="1.0.0"):
         self.iface = iface
         self.dry_run = dry_run
         self.device_name = device_name
@@ -733,7 +733,7 @@ def main():
     parser.add_argument("--adapter", default=os.environ.get("BLE_ADAPTER", "hci0"))
     parser.add_argument("--wifi-iface", default=os.environ.get("WIFI_IFACE", "wlan0"))
     parser.add_argument("--name", default=os.environ.get("BLE_NAME", f"RoboDog-{hostname_suffix()}"))
-    parser.add_argument("--robot-port", type=int, default=int(os.environ.get("ROBOT_PORT", "9000")))
+    parser.add_argument("--robot-port", type=int, default=int(os.environ.get("ROBOT_PORT", "9001")))
     parser.add_argument("--fw-version", default=os.environ.get("FW_VERSION", "1.0.0"))
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--no-auto-accept-pairing", action="store_true")

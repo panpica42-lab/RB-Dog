@@ -1,3 +1,4 @@
+<!-- markdownlint-disable -->
 # App 通信链路与指令说明
 
 本文档说明手机 App `hbuilder_quadruped_controller` 当前的通信方式、指令映射、发送频率和回包处理。

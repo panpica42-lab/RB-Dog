@@ -8,8 +8,33 @@
       :connect-label="connectLabel"
       :controller-address-input="controllerAddressInput"
       :connect-hint="connectHint"
+      :ble-devices="bleDevices"
+      :ble-scanning="bleScanning"
+      :ble-connected="bleConnected"
+      :ble-busy="bleBusy"
+      :ble-device-name="bleDeviceName"
+      :provision-hint="provisionHint"
+      :wifi-networks="wifiNetworks"
+      :wifi-scanning="wifiScanning"
+      :selected-wifi-ssid="selectedWifiSsid"
+      :manual-wifi-ssid="manualWifiSsid"
+      :wifi-password="wifiPassword"
+      :wifi-hidden="wifiHidden"
+      :wifi-provisioning="wifiProvisioning"
+      :provision-button-label="provisionButtonLabel"
       @update-controller-address="controllerAddressInput = $event"
       @connect="connect"
+      @start-ble-provisioning="startBleProvisioning"
+      @stop-ble-provisioning-scan="stopBleProvisioningScan"
+      @connect-ble-device="connectBleProvisionDevice"
+      @disconnect-ble-provisioning="disconnectBleProvisioning"
+      @scan-provision-wifi="scanProvisionWifi"
+      @select-provision-wifi="selectProvisionWifi"
+      @update-manual-wifi-ssid="updateManualWifiSsid"
+      @update-wifi-password="updateWifiPassword"
+      @toggle-wifi-hidden="toggleWifiHidden"
+      @submit-wifi-provisioning="submitWifiProvisioning"
+      @clear-provision-wifi="clearProvisionWifi"
     />
 
     <ControlView
@@ -73,6 +98,7 @@ import ConnectView from '../../components/ConnectView.vue'
 import ControlView from '../../components/ControlView.vue'
 import VisionView from '../../components/VisionView.vue'
 import gatewayConnection from '../../features/gatewayConnection.js'
+import wifiProvisioning from '../../features/wifiProvisioning.js'
 import robotControl from '../../features/robotControl.js'
 import robotStatus from '../../features/robotStatus.js'
 import visionStream from '../../features/visionStream.js'
@@ -85,6 +111,7 @@ export default {
   },
   mixins: [
     gatewayConnection,
+    wifiProvisioning,
     robotStatus,
     robotControl,
     visionStream
@@ -105,6 +132,7 @@ export default {
     this.stopPointCloudCapture({ force: true })
     this.stopRobot(false)
     this.stopMoveLoop()
+    this.disconnectBleProvisioning()
     this.closeSocket()
   },
   onHide() {
@@ -270,7 +298,7 @@ button.danger {
   border-radius: 8px;
   background: rgba(3, 16, 21, 0.86);
   box-shadow: 0 0 40px rgba(54, 241, 244, 0.16);
-  overflow: hidden;
+  overflow-y: auto;
 }
 
 .panel-glow {
@@ -445,6 +473,88 @@ button.danger {
   margin-top: 8px;
   color: #94b7bc;
   font-size: 12px;
+}
+
+.provision-box {
+  position: relative;
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px solid rgba(54, 241, 244, 0.18);
+}
+
+.provision-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.provision-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  margin-top: 8px;
+}
+
+.mini-button {
+  min-width: 86px;
+  min-height: 34px;
+  font-size: 12px;
+}
+
+.mini-button.primary {
+  min-width: 104px;
+}
+
+.device-list,
+.wifi-list {
+  height: 86px;
+  margin-top: 8px;
+  border: 1px solid rgba(54, 241, 244, 0.18);
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.24);
+}
+
+.wifi-list {
+  height: 104px;
+}
+
+.list-row {
+  min-height: 34px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 0 9px;
+  border-bottom: 1px solid rgba(54, 241, 244, 0.1);
+  color: #c8f3f3;
+  font-size: 12px;
+}
+
+.list-row.active {
+  color: #021114;
+  background: #36f1f4;
+}
+
+.list-row text:first-child {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.list-row text:last-child {
+  flex-shrink: 0;
+  color: inherit;
+  opacity: 0.78;
+}
+
+.wifi-area {
+  margin-top: 8px;
+}
+
+.compact-field {
+  margin-top: 8px;
 }
 
 .topbar {
