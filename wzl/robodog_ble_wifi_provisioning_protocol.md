@@ -195,6 +195,8 @@ App 写入 Command Characteristic：
 | 2 | 已连接 |
 | 3 | 连接失败 |
 
+`connectedSsid` 应返回香橙派当前无线网卡实际连接的 Wi-Fi 名称，而不是仅返回最近一次 App 下发配网时记录的 SSID。App 会根据 `wifiState = 2`、`connectedSsid` 和 `ip` 判断设备是否已经处于可继续使用状态；如果三者有效，App 可提示用户将手机连接到同一 Wi-Fi，并允许跳过重新配网。
+
 ### 7.2 扫描 Wi-Fi
 
 App 写入：

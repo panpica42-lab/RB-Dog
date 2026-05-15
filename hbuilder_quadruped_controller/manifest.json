@@ -1,5 +1,5 @@
 {
-    "name" : "四足控制器",
+    "name" : "四足控制器-dev",
     "appid" : "__UNI__3DB0AB1",
     "description" : "移动端四足机器人控制器",
     "versionName" : "1.0.2",
@@ -30,7 +30,8 @@
                     "<uses-permission android:name=\"android.permission.BLUETOOTH_CONNECT\"/>",
                     "<uses-permission android:name=\"android.permission.ACCESS_FINE_LOCATION\"/>",
                     "<uses-permission android:name=\"android.permission.WAKE_LOCK\"/>"
-                ]
+                ],
+                "package" : "com.rbdog.controller.dev"
             },
             "ios" : {
                 "dSYMs" : false

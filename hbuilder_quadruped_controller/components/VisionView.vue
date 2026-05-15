@@ -30,7 +30,7 @@
         canvas-id="pointCloudCanvas"
         class="pointcloud-canvas"
         @touchstart.stop.prevent="startPointCloudDrag"
-        @touchmove.stop.prevent="movePointCloudDrag"
+        @touchmove.stop="movePointCloudDrag"
         @touchend.stop.prevent="endPointCloudDrag"
         @touchcancel.stop.prevent="endPointCloudDrag"
       ></canvas>

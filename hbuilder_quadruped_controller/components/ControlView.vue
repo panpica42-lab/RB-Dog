@@ -59,7 +59,7 @@
       id="movePad"
       class="stick-area left"
       @touchstart.stop.prevent="startStick('move', $event)"
-      @touchmove.stop.prevent="moveStick('move', $event)"
+      @touchmove.stop="moveStick('move', $event)"
       @touchend.stop.prevent="endStick('move')"
       @touchcancel.stop.prevent="endStick('move')"
     >
@@ -74,13 +74,25 @@
       id="turnPad"
       class="stick-area right"
       @touchstart.stop.prevent="startStick('turn', $event)"
-      @touchmove.stop.prevent="moveStick('turn', $event)"
+      @touchmove.stop="moveStick('turn', $event)"
       @touchend.stop.prevent="endStick('turn')"
       @touchcancel.stop.prevent="endStick('turn')"
     >
       <text class="arrow left-a">‹</text>
       <text class="arrow right-a">›</text>
       <view class="knob" :style="{ transform: turnKnobTransform }"></view>
+    </view>
+
+    <view class="action-strip">
+      <button
+        v-for="action in actionLibrary"
+        :key="action.code"
+        hover-class="button-press"
+        class="action-strip-button"
+        @tap="emitCommand('action', action.code)"
+      >
+        {{ action.label }}
+      </button>
     </view>
 
     <view class="rail command-rail">
@@ -115,11 +127,7 @@
     <view v-if="actionsOpen" class="panel">
       <text class="panel-title">动作库</text>
       <view class="action-grid">
-        <button @tap="emitCommand('action', 11)">打招呼</button>
-        <button @tap="emitCommand('action', 5)">撒尿</button>
-        <button @tap="emitCommand('action', 2)">跳跃</button>
-        <button @tap="emitCommand('action', 14)">比心</button>
-        <button @tap="emitCommand('action', 15)">拜年</button>
+        <button v-for="action in actionLibrary" :key="action.code" @tap="emitCommand('action', action.code)">{{ action.label }}</button>
         <button @tap="toggleObstacle">{{ obstacle ? '停障开' : '停障关' }}</button>
         <button @tap="toggleVideo">{{ video ? '视频开' : '视频关' }}</button>
         <button @tap="emitCommand('stop')">停止运动</button>
@@ -158,6 +166,18 @@ export default {
     obstacle: Boolean,
     video: Boolean,
     logs: Array
+  },
+  data() {
+    return {
+      actionLibrary: [
+        { label: '打招呼', code: 11 },
+        { label: '撒尿', code: 5 },
+        { label: '跳跃', code: 2 },
+        { label: '比心', code: 14 },
+        { label: '拜年', code: 15 },
+        { label: '原地模式', code: 18 }
+      ]
+    }
   },
   methods: {
     openVision() { this.$emit('open-vision') },

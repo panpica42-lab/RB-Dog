@@ -12,6 +12,8 @@
       :ble-scanning="bleScanning"
       :ble-connected="bleConnected"
       :ble-busy="bleBusy"
+      :ble-auto-connecting="bleAutoConnecting"
+      :ble-initializing="bleInitializing"
       :ble-device-name="bleDeviceName"
       :provision-hint="provisionHint"
       :wifi-networks="wifiNetworks"
@@ -21,6 +23,9 @@
       :wifi-password="wifiPassword"
       :wifi-hidden="wifiHidden"
       :wifi-provisioning="wifiProvisioning"
+      :device-wifi-connected="deviceWifiConnected"
+      :device-wifi-ssid="deviceWifiSsid"
+      :device-wifi-ip="deviceWifiIp"
       :provision-button-label="provisionButtonLabel"
       @update-controller-address="controllerAddressInput = $event"
       @connect="connect"
@@ -35,6 +40,8 @@
       @toggle-wifi-hidden="toggleWifiHidden"
       @submit-wifi-provisioning="submitWifiProvisioning"
       @clear-provision-wifi="clearProvisionWifi"
+      @continue-with-device-wifi="continueWithDeviceWifi"
+      @reprovision-device-wifi="reprovisionDeviceWifi"
     />
 
     <ControlView
@@ -128,6 +135,8 @@ export default {
     this.loadStoredAddress()
   },
   onUnload() {
+    this.clearWifiScanTimer()
+    this.clearWifiStatusTimer()
     this.stopCameraCapture({ force: true })
     this.stopPointCloudCapture({ force: true })
     this.stopRobot(false)
@@ -285,20 +294,20 @@ button.danger {
   height: calc(100vh - 54px);
   display: grid;
   place-items: center;
-  padding: 10px;
+  padding: 8px 10px;
 }
 
 .connect-panel {
   position: relative;
-  width: min(700px, calc(100vw - 20px));
+  width: min(980px, calc(100vw - 20px));
+  height: calc(100vh - 70px);
   min-height: 0;
-  max-height: calc(100vh - 74px);
-  padding: 18px;
+  padding: 14px 16px;
   border: 1px solid rgba(54, 241, 244, 0.42);
   border-radius: 8px;
   background: rgba(3, 16, 21, 0.86);
   box-shadow: 0 0 40px rgba(54, 241, 244, 0.16);
-  overflow-y: auto;
+  overflow: hidden;
 }
 
 .panel-glow {
@@ -311,38 +320,66 @@ button.danger {
   background: radial-gradient(circle, rgba(54, 241, 244, 0.22), transparent 68%);
 }
 
-.connect-layout {
-  position: relative;
+.ble-init-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 6;
   display: grid;
-  grid-template-columns: 1fr 180px;
-  gap: 18px;
-  align-items: center;
+  place-items: center;
+  background: rgba(2, 10, 14, 0.72);
+  backdrop-filter: blur(4px);
+}
+
+.ble-init-card {
+  width: min(360px, calc(100% - 40px));
+  display: grid;
+  gap: 8px;
+  padding: 22px 20px;
+  border: 1px solid rgba(54, 241, 244, 0.34);
+  border-radius: 10px;
+  background:
+    radial-gradient(circle at top, rgba(54, 241, 244, 0.16), transparent 48%),
+    rgba(4, 20, 27, 0.94);
+  box-shadow: 0 0 28px rgba(54, 241, 244, 0.18);
+  text-align: center;
+}
+
+.ble-init-title {
+  font-size: 22px;
+  font-weight: 900;
+  color: #ecfbfb;
+}
+
+.ble-init-text {
+  font-size: 13px;
+  line-height: 1.5;
+  color: #9fc7cb;
 }
 
 .connect-copy {
+  position: relative;
+  height: 100%;
+  display: grid;
+  grid-template-rows: minmax(0, 1fr) auto auto;
+  gap: 8px;
   min-width: 0;
 }
 
-.connect-title {
-  position: relative;
-  display: block;
-  font-size: 23px;
-  font-weight: 900;
-}
-
-.connect-desc {
-  position: relative;
-  display: block;
-  margin-top: 6px;
-  color: #94b7bc;
-  font-size: 13px;
+.connect-workspace {
+  min-height: 0;
+  height: 100%;
+  display: grid;
+  grid-template-columns: minmax(0, 1.25fr) minmax(260px, 0.75fr);
+  gap: 12px;
+  align-items: stretch;
+  overflow: visible;
 }
 
 .field {
   position: relative;
   display: grid;
   gap: 5px;
-  margin-top: 14px;
+  margin-top: 10px;
 }
 
 .field-label {
@@ -361,20 +398,33 @@ button.danger {
   font-size: 14px;
 }
 
+.input-with-action {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.input-with-button {
+  flex: 1;
+}
+
+.input-action-button {
+  min-width: 62px;
+  min-height: 38px;
+  padding: 0 10px;
+  flex-shrink: 0;
+  font-size: 12px;
+}
+
 .connect-button {
   position: relative;
   width: 150px;
-  height: 42px;
-  margin-top: 14px;
+  height: 36px;
   font-size: 15px;
 }
 
 .connect-visual {
-  position: relative;
-  width: 170px;
-  height: 170px;
-  display: grid;
-  place-items: center;
+  display: none;
 }
 
 .signal-ring {
@@ -436,14 +486,13 @@ button.danger {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
   gap: 7px;
-  margin-top: 14px;
 }
 
 .step {
   display: flex;
   align-items: center;
   gap: 6px;
-  min-height: 34px;
+  min-height: 30px;
   padding: 0 8px;
   border: 1px solid rgba(54, 241, 244, 0.16);
   border-radius: 8px;
@@ -470,16 +519,24 @@ button.danger {
 .hint {
   position: relative;
   display: block;
-  margin-top: 8px;
   color: #94b7bc;
   font-size: 12px;
 }
 
 .provision-box {
   position: relative;
-  margin-top: 12px;
-  padding-top: 10px;
-  border-top: 1px solid rgba(54, 241, 244, 0.18);
+  min-height: 0;
+  box-sizing: border-box;
+  padding: 10px;
+  border: 1px solid rgba(54, 241, 244, 0.18);
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.18);
+}
+
+.primary-provision {
+  height: 100%;
+  box-sizing: border-box;
+  overflow: visible;
 }
 
 .provision-head {
@@ -493,12 +550,18 @@ button.danger {
   display: flex;
   flex-wrap: wrap;
   gap: 7px;
-  margin-top: 8px;
+  margin-top: 7px;
+}
+
+.provision-primary-button {
+  min-width: 150px;
+  min-height: 36px;
+  font-size: 15px;
 }
 
 .mini-button {
   min-width: 86px;
-  min-height: 34px;
+  min-height: 32px;
   font-size: 12px;
 }
 
@@ -506,21 +569,35 @@ button.danger {
   min-width: 104px;
 }
 
-.device-list,
-.wifi-list {
-  height: 86px;
-  margin-top: 8px;
+.provision-summary {
+  min-height: 32px;
+  display: flex;
+  align-items: center;
+  margin-top: 7px;
+  padding: 0 9px;
   border: 1px solid rgba(54, 241, 244, 0.18);
   border-radius: 8px;
   background: rgba(0, 0, 0, 0.24);
+  color: #c8f3f3;
+  font-size: 12px;
+}
+
+.device-list,
+.wifi-list {
+  min-height: 0;
+  margin-top: 7px;
+  border: 1px solid rgba(54, 241, 244, 0.18);
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.24);
+  overflow: visible;
 }
 
 .wifi-list {
-  height: 104px;
+  height: auto;
 }
 
 .list-row {
-  min-height: 34px;
+  min-height: 30px;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -529,6 +606,17 @@ button.danger {
   border-bottom: 1px solid rgba(54, 241, 244, 0.1);
   color: #c8f3f3;
   font-size: 12px;
+}
+
+.wifi-main {
+  min-width: 0;
+  flex: 1;
+  display: grid;
+  gap: 2px;
+}
+
+.list-row:last-child {
+  border-bottom: 0;
 }
 
 .list-row.active {
@@ -549,12 +637,95 @@ button.danger {
   opacity: 0.78;
 }
 
+.wifi-select-button {
+  min-width: 66px;
+  min-height: 28px;
+  padding: 0 8px;
+  flex-shrink: 0;
+  font-size: 12px;
+}
+
+.wifi-selected-tag {
+  flex-shrink: 0;
+  color: inherit;
+  font-size: 12px;
+  font-weight: 800;
+}
+
 .wifi-area {
-  margin-top: 8px;
+  min-height: 0;
+  height: auto;
+  margin-top: 7px;
+  overflow: visible;
+}
+
+.device-wifi-card {
+  display: grid;
+  gap: 7px;
+  padding: 10px;
+  border: 1px solid rgba(101, 242, 155, 0.34);
+  border-radius: 8px;
+  background: rgba(9, 38, 30, 0.56);
+}
+
+.device-wifi-title {
+  color: #65f29b;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.device-wifi-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #ecfbfb;
+  font-size: 18px;
+  font-weight: 900;
+}
+
+.device-wifi-tip {
+  color: #9fc7cb;
+  font-size: 12px;
 }
 
 .compact-field {
-  margin-top: 8px;
+  margin-top: 7px;
+}
+
+.manual-connect {
+  position: relative;
+  min-height: 0;
+  height: 100%;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  align-content: start;
+  padding: 10px;
+  border: 1px solid rgba(54, 241, 244, 0.18);
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.16);
+  overflow: hidden;
+}
+
+.manual-head {
+  min-height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.manual-toggle {
+  color: #36f1f4;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.manual-body {
+  min-height: 0;
+  height: 100%;
+  margin-top: 2px;
+  overflow: hidden;
 }
 
 .topbar {
@@ -874,6 +1045,25 @@ button.danger {
 .left-a { left: 11%; top: 50%; transform: translateY(-50%); }
 .right-a { right: 11%; top: 50%; transform: translateY(-50%); }
 
+.action-strip {
+  position: absolute;
+  left: 190px;
+  right: 110px;
+  bottom: 10px;
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 6px;
+  z-index: 2;
+}
+
+.action-strip-button {
+  width: 100%;
+  min-width: 0;
+  min-height: 38px;
+  padding: 0 6px;
+  font-size: 12px;
+}
+
 .command-button {
   width: 100%;
   min-width: 0;
@@ -1165,6 +1355,18 @@ button.danger {
 
   .stick-area.right {
     right: 104px;
+  }
+
+  .action-strip {
+    left: 154px;
+    right: 98px;
+    bottom: 8px;
+    gap: 5px;
+  }
+
+  .action-strip-button {
+    min-height: 34px;
+    font-size: 11px;
   }
 
   .knob {

@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import argparse
+import base64
 import json
 import os
 import socket
@@ -45,6 +46,7 @@ CODE_WRONG_PASSWORD = 1004
 CODE_CONNECT_TIMEOUT = 1005
 CODE_WIFI_NOT_FOUND = 1006
 CODE_SYSTEM_ERROR = 1007
+NOTIFY_FRAME_INTERVAL_MS = 18
 
 
 def dbus_to_python(value):
@@ -65,6 +67,43 @@ def dbus_to_python(value):
 
 def text_to_dbus_bytes(text):
     return [dbus.Byte(byte) for byte in text.encode("utf-8")]
+
+
+def encode_frame_number(value, width=2):
+    digits = "0123456789abcdefghijklmnopqrstuvwxyz"
+    if value < 0:
+        raise ValueError("frame number must be positive")
+    base = len(digits)
+    chars = []
+    current = value
+    while True:
+        chars.append(digits[current % base])
+        current //= base
+        if current == 0:
+            break
+    encoded = "".join(reversed(chars))
+    if len(encoded) > width:
+        raise ValueError("frame number exceeds width")
+    return encoded.rjust(width, "0")
+
+
+def split_ble_text_frames(text, frame_id="0", chunk_size=15):
+    encoded = base64.b64encode(text.encode("utf-8")).decode("ascii")
+    total = max(1, (len(encoded) + chunk_size - 1) // chunk_size)
+    if total > 36 * 36:
+        raise ValueError("BLE frame count exceeds 1296")
+    frames = []
+    for index in range(total):
+        fragment = encoded[index * chunk_size : (index + 1) * chunk_size]
+        frames.append(f"~{frame_id}{encode_frame_number(index)}{encode_frame_number(total)}:{fragment}")
+    return frames
+
+
+def preview_text(text, limit=72):
+    value = " ".join(str(text or "").split())
+    if len(value) > limit:
+        return value[:limit] + "..."
+    return value
 
 
 def run_command(command, timeout=35):
@@ -143,6 +182,11 @@ class WifiProvisioner:
     def snapshot(self):
         current = dict(self.status)
         current["ip"] = self.current_ip()
+        current_ssid = self.current_ssid()
+        if current_ssid:
+            current["ssid"] = current_ssid
+            current["ok"] = True
+            current["state"] = "connected"
         return current
 
     def status_payload(self):
@@ -373,6 +417,29 @@ class WifiProvisioner:
                 return token.split("/", 1)[0]
         return ""
 
+    def current_ssid(self):
+        if self.dry_run:
+            return self.last_ssid
+
+        try:
+            code, stdout, _ = run_command(["iwgetid", self.iface, "-r"], timeout=3)
+            if code == 0 and stdout.strip():
+                return stdout.strip()
+        except Exception:
+            pass
+
+        try:
+            code, stdout, _ = run_command(["nmcli", "-t", "-f", "ACTIVE,SSID", "device", "wifi", "list", "ifname", self.iface], timeout=5)
+        except Exception:
+            return ""
+        if code != 0:
+            return ""
+        for line in stdout.splitlines():
+            fields = split_nmcli_line(line)
+            if len(fields) >= 2 and fields[0].strip().lower() == "yes":
+                return fields[1].strip()
+        return ""
+
     def current_gateway(self):
         try:
             code, stdout, _ = run_command(["ip", "route", "show", "default", "dev", self.iface], timeout=3)
@@ -474,9 +541,15 @@ class Characteristic(dbus.service.Object):
 
 
 class NotifyCharacteristic(Characteristic):
-    def __init__(self, bus, index, service):
-        super().__init__(bus, index, NOTIFY_UUID, ["notify"], service)
+    def __init__(self, bus, index, service, uuid_value=NOTIFY_UUID, flags=None):
+        super().__init__(bus, index, uuid_value, flags or ["notify"], service)
+        self.init_notify_state()
+
+    def init_notify_state(self):
         self.notifying = False
+        self.frame_seq = 0
+        self.pending_frames = []
+        self.flush_scheduled = False
 
     @dbus.service.method(GATT_CHRC_IFACE)
     def StartNotify(self):
@@ -489,7 +562,33 @@ class NotifyCharacteristic(Characteristic):
     def notify(self, payload):
         if not self.notifying:
             return
-        self.PropertiesChanged(GATT_CHRC_IFACE, {"Value": text_to_dbus_bytes(json.dumps(payload, ensure_ascii=False))}, [])
+        text = json.dumps(payload, ensure_ascii=False)
+        frame_id = encode_frame_number(self.frame_seq % 36, width=1)
+        self.frame_seq = (self.frame_seq + 1) % 36
+        frames = split_ble_text_frames(text, frame_id=frame_id)
+        print(
+            f"BLE notify cmd={payload.get('cmd', '--')} frame_id={frame_id} frames={len(frames)} len={len(text)} preview={preview_text(text)}",
+            flush=True,
+        )
+        self.pending_frames.extend(frames)
+        self.schedule_flush()
+
+    def schedule_flush(self):
+        if self.flush_scheduled or not self.pending_frames:
+            return
+        self.flush_scheduled = True
+        GLib.timeout_add(NOTIFY_FRAME_INTERVAL_MS, self.flush_notify_frames)
+
+    def flush_notify_frames(self):
+        self.flush_scheduled = False
+        if not self.notifying or not self.pending_frames:
+            self.pending_frames = []
+            return False
+        frame = self.pending_frames.pop(0)
+        self.PropertiesChanged(GATT_CHRC_IFACE, {"Value": text_to_dbus_bytes(frame)}, [])
+        if self.pending_frames:
+            self.schedule_flush()
+        return False
 
     @dbus.service.signal(DBUS_PROP_IFACE, signature="sa{sv}as")
     def PropertiesChanged(self, interface, changed, invalidated):
@@ -498,16 +597,18 @@ class NotifyCharacteristic(Characteristic):
 
 class WifiListCharacteristic(NotifyCharacteristic):
     def __init__(self, bus, index, service):
-        Characteristic.__init__(self, bus, index, WIFI_LIST_UUID, ["read", "notify"], service)
-        self.notifying = False
+        super().__init__(bus, index, service, uuid_value=WIFI_LIST_UUID, flags=["read", "notify"])
         self.last_payload = make_response("", "wifi_list", CODE_OK, "ok", {"list": []})
 
     @dbus.service.method(GATT_CHRC_IFACE, in_signature="a{sv}", out_signature="ay")
     def ReadValue(self, options):
         return text_to_dbus_bytes(json.dumps(self.last_payload, ensure_ascii=False))
 
-    def publish(self, payload):
+    def cache(self, payload):
         self.last_payload = payload
+
+    def publish(self, payload):
+        self.cache(payload)
         self.notify(payload)
 
 
@@ -527,15 +628,78 @@ class CommandCharacteristic(Characteristic):
         self.provisioner = provisioner
         self.notify_ch = notify_ch
         self.wifi_list_ch = wifi_list_ch
+        self.frame_buffers = {}
+
+    def parse_frame_digit(self, value):
+        text = chr(value).lower()
+        if "0" <= text <= "9":
+            return ord(text) - ord("0")
+        if "a" <= text <= "z":
+            return ord(text) - ord("a") + 10
+        raise ValueError("bad frame digit")
+
+    def parse_frame_number(self, raw):
+        value = 0
+        for item in raw:
+            value = value * 36 + self.parse_frame_digit(item)
+        return value
 
     @dbus.service.method(GATT_CHRC_IFACE, in_signature="aya{sv}")
     def WriteValue(self, value, options):
+        raw = bytes(dbus_to_python(value))
+        if raw.startswith(b"~"):
+            payload = self.parse_frame(raw)
+            if payload is None:
+                return
+        else:
+            payload = raw
+
         try:
-            payload = json.loads(bytes(dbus_to_python(value)).decode("utf-8"))
+            payload = json.loads(payload.decode("utf-8"))
         except Exception as exc:
             self.notify_ch.notify(make_response("", "error", CODE_PARAM_ERROR, f"invalid json: {exc}"))
             return
 
+        self.handle_payload(payload)
+
+    def parse_frame(self, raw):
+        try:
+            header, fragment = raw[1:].split(b":", 1)
+            if len(header) != 5:
+                raise ValueError("bad frame header")
+            frame_id = chr(header[0])
+            seq = self.parse_frame_number(header[1:3])
+            total = self.parse_frame_number(header[3:5])
+            if seq >= total or total <= 0:
+                raise ValueError("bad frame index")
+        except Exception as exc:
+            self.notify_ch.notify(make_response("", "error", CODE_PARAM_ERROR, f"invalid frame: {exc}"))
+            return None
+
+        buffer = self.frame_buffers.setdefault(frame_id, {"total": total, "parts": {}, "time": time.time()})
+        if buffer["total"] != total:
+            buffer = {"total": total, "parts": {}, "time": time.time()}
+            self.frame_buffers[frame_id] = buffer
+        buffer["parts"][seq] = fragment.decode("ascii")
+        buffer["time"] = time.time()
+
+        now = time.time()
+        for key in list(self.frame_buffers.keys()):
+            if now - self.frame_buffers[key]["time"] > 8:
+                self.frame_buffers.pop(key, None)
+
+        if len(buffer["parts"]) < total:
+            return None
+
+        self.frame_buffers.pop(frame_id, None)
+        try:
+            encoded = "".join(buffer["parts"][index] for index in range(total))
+            return base64.b64decode(encoded.encode("ascii"))
+        except Exception as exc:
+            self.notify_ch.notify(make_response("", "error", CODE_PARAM_ERROR, f"invalid frame payload: {exc}"))
+            return None
+
+    def handle_payload(self, payload):
         if isinstance(payload, dict) and "cmd" not in payload and "ssid" in payload:
             payload = {"id": str(uuid.uuid4()), "cmd": "set_wifi", "data": payload}
         if not isinstance(payload, dict):
@@ -577,7 +741,7 @@ class CommandCharacteristic(Characteristic):
         def worker():
             code, msg, networks = self.provisioner.scan_wifi()
             payload = make_response(request_id, "wifi_list", code, msg, {"list": networks})
-            GLib.idle_add(self.wifi_list_ch.publish, payload)
+            GLib.idle_add(self.wifi_list_ch.cache, payload)
             GLib.idle_add(self.notify_ch.notify, payload)
 
         threading.Thread(target=worker, daemon=True).start()
