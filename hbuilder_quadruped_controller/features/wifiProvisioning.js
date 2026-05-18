@@ -3,7 +3,7 @@ import { STORAGE_KEY } from './gatewayConnection.js'
 
 const GATEWAY_PORT = 9001
 const WIFI_SCAN_TIMEOUT_MS = 18000
-const BLE_INIT_OVERLAY_MS = 500
+const BLE_INIT_OVERLAY_MS = 3000
 const STATUS_WAIT_TIMEOUT_MS = 3500
 
 function upsertDevice(devices, device) {
@@ -355,6 +355,15 @@ export default {
     handleBleProvisionError(message, error) {
       this.provisionHint = message || 'BLE 配网失败'
       this.addLog(`BLE 配网错误${message ? `: ${message}` : ''}`)
+      const detail = String((error && (error.errMsg || error.message || error.code)) || message || '')
+      if (detail.indexOf('安卓蓝牙权限未授予') >= 0) {
+        this.provisionHint = '请允许蓝牙和定位权限后重试'
+        return
+      }
+      if (detail.indexOf('status:62') >= 0) {
+        this.provisionHint = '蓝牙连接建立失败，请靠近设备并重试，必要时重开手机蓝牙'
+        return
+      }
       if (error && error.errCode === 10001) {
         this.provisionHint = '请打开手机蓝牙后重试'
       }

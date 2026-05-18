@@ -128,13 +128,6 @@
           </view>
       </view>
 
-      <view class="connect-steps">
-        <view :class="['step', bleScanning || bleConnected || connecting || connected ? 'active' : '']"><text>1</text><text>发现机器狗</text></view>
-        <view :class="['step', bleConnected || connecting || connected ? 'active' : '']"><text>2</text><text>发送 Wi-Fi</text></view>
-        <view :class="['step', pageMode === 'control' ? 'active' : '']"><text>3</text><text>进入控制</text></view>
-      </view>
-
-      <text class="hint">{{ connectHint }}</text>
     </view>
   </view>
 </view>

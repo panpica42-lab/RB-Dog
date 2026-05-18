@@ -1,9 +1,9 @@
 {
-    "name" : "四足控制器-dev",
+    "name" : "四足控制器",
     "appid" : "__UNI__3DB0AB1",
     "description" : "移动端四足机器人控制器",
-    "versionName" : "1.0.2",
-    "versionCode" : 102,
+    "versionName" : "5.1.5",
+    "versionCode" : "515",
     "transformPx" : false,
     "app-plus" : {
         "usingComponents" : true,
@@ -12,11 +12,13 @@
         "screenOrientation" : [ "landscape-primary" ],
         "splashscreen" : {
             "alwaysShowBeforeRender" : false,
-            "waiting" : false,
+            "waiting" : true,
             "autoclose" : true,
             "delay" : 0
         },
-        "modules" : {},
+        "modules" : {
+            "Bluetooth" : {}
+        },
         "distribute" : {
             "android" : {
                 "permissions" : [
@@ -29,9 +31,10 @@
                     "<uses-permission android:name=\"android.permission.BLUETOOTH_SCAN\"/>",
                     "<uses-permission android:name=\"android.permission.BLUETOOTH_CONNECT\"/>",
                     "<uses-permission android:name=\"android.permission.ACCESS_FINE_LOCATION\"/>",
+                    "<uses-permission android:name=\"android.permission.ACCESS_COARSE_LOCATION\"/>",
                     "<uses-permission android:name=\"android.permission.WAKE_LOCK\"/>"
                 ],
-                "package" : "com.rbdog.controller.dev"
+                "package" : "com.rbdog.controller.ov"
             },
             "ios" : {
                 "dSYMs" : false

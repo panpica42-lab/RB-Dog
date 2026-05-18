@@ -3,6 +3,9 @@ export const DEVICE_INFO_UUID = '0000a002-0000-1000-8000-00805f9b34fb'
 export const COMMAND_UUID = '0000a003-0000-1000-8000-00805f9b34fb'
 export const NOTIFY_UUID = '0000a004-0000-1000-8000-00805f9b34fb'
 export const WIFI_LIST_UUID = '0000a005-0000-1000-8000-00805f9b34fb'
+const BLE_API_PRE_DELAY_MS = 80
+const BLE_API_POST_DELAY_MS = 40
+const BLE_API_ERROR_DELAY_MS = 120
 
 function normalizeUuid(value) {
   return String(value || '').toLowerCase()
@@ -14,14 +17,22 @@ function hasProperty(characteristic, name) {
 
 function getWriteCandidates(characteristic) {
   const properties = (characteristic && characteristic.properties) || {}
+  const supportsWrite = Boolean(properties.write)
+  const supportsWriteNoResponse = Boolean(
+    properties.writeNoResponse || properties.writeWithoutResponse || properties['write-without-response']
+  )
   const candidates = []
-  if (properties.write) candidates.push('write')
-  if (properties.writeNoResponse || properties.writeWithoutResponse || properties['write-without-response']) {
+  if (isAndroidApp()) {
     candidates.push('writeNoResponse')
+    candidates.push('write')
+    candidates.push('default')
+  } else {
+    candidates.push('write')
+    candidates.push('writeNoResponse')
+    candidates.push('default')
   }
-  if (!candidates.length) {
-    candidates.push('write', 'writeNoResponse')
-  }
+  if (supportsWriteNoResponse) candidates.push('writeNoResponse')
+  if (supportsWrite) candidates.push('write')
   candidates.push('default')
   return Array.from(new Set(candidates))
 }
@@ -108,6 +119,71 @@ function sleep(ms) {
   return new Promise(resolve => setTimeout(resolve, ms))
 }
 
+function getPlatformInfo() {
+  try {
+    return typeof uni !== 'undefined' && uni.getSystemInfoSync ? uni.getSystemInfoSync() : {}
+  } catch (error) {
+    return {}
+  }
+}
+
+function isAndroidApp() {
+  const info = getPlatformInfo()
+  return info.platform === 'android'
+}
+
+function requestAndroidPermissions(permissions) {
+  return new Promise((resolve, reject) => {
+    try {
+      if (typeof plus === 'undefined' || !plus.android || !plus.android.requestPermissions) {
+        resolve()
+        return
+      }
+      plus.android.requestPermissions(
+        permissions,
+        result => {
+          const denied = []
+          const deniedAlways = []
+          ;(result.deniedPresent || []).forEach(item => denied.push(item))
+          ;(result.deniedAlways || []).forEach(item => deniedAlways.push(item))
+          if (denied.length || deniedAlways.length) {
+            reject(
+              makeError(
+                '安卓蓝牙权限未授予',
+                `denied=${denied.join(',') || 'none'} deniedAlways=${deniedAlways.join(',') || 'none'}`
+              )
+            )
+            return
+          }
+          resolve()
+        },
+        error => reject(makeError('安卓蓝牙权限申请失败', error && error.message ? error.message : error))
+      )
+    } catch (error) {
+      reject(makeError('安卓蓝牙权限申请失败', error && error.message ? error.message : error))
+    }
+  })
+}
+
+async function ensureAndroidBlePermissions() {
+  if (!isAndroidApp()) return
+  await requestAndroidPermissions([
+    'android.permission.BLUETOOTH_SCAN',
+    'android.permission.BLUETOOTH_CONNECT',
+    'android.permission.ACCESS_FINE_LOCATION'
+  ])
+}
+
+function shouldRetryConnect(error) {
+  const message = String((error && (error.errMsg || error.message || error.code)) || '').toLowerCase()
+  return (
+    message.indexOf('status:62') >= 0 ||
+    message.indexOf('fail connect') >= 0 ||
+    message.indexOf('10003') >= 0 ||
+    message.indexOf('connection timeout') >= 0
+  )
+}
+
 function arrayBufferToText(buffer) {
   if (typeof buffer === 'string') return buffer
   const bytes = new Uint8Array(buffer || [])
@@ -145,6 +221,90 @@ export function createBleProvisionClient({ onDevice, onMessage, onError, onState
   let valueListenerReady = false
   let lastWifiListMessage = null
   const notifyFrameBuffers = {}
+  let bleApiChain = Promise.resolve()
+
+  function callBleApi(fn, options = {}, label = 'ble') {
+    const task = bleApiChain.catch(() => {}).then(async () => {
+      debugLog('ble:call:start', { label, options })
+      await sleep(BLE_API_PRE_DELAY_MS)
+      try {
+        const result = await promisify(fn, options)
+        await sleep(BLE_API_POST_DELAY_MS)
+        debugLog('ble:call:ok', { label })
+        return result
+      } catch (error) {
+        await sleep(BLE_API_ERROR_DELAY_MS)
+        debugLog('ble:call:fail', { label, message: error && error.errMsg ? error.errMsg : String(error || '') })
+        throw error
+      }
+    })
+    bleApiChain = task.then(
+      () => undefined,
+      () => undefined
+    )
+    return task
+  }
+
+  function buildWriteOptions(value, candidate = 'default') {
+    const options = {
+      deviceId,
+      serviceId,
+      characteristicId: commandId,
+      value
+    }
+    if (candidate && candidate !== 'default') {
+      options.writeType = candidate
+    }
+    return options
+  }
+
+  async function refreshGattContext(reason = '') {
+    debugLog('gatt:refresh:start', { reason, deviceId, serviceId, commandId, commandWriteCandidates })
+    await sleep(160)
+    await discoverCharacteristics()
+    await sleep(80)
+    debugLog('gatt:refresh:done', { reason, deviceId, serviceId, commandId, commandWriteCandidates })
+  }
+
+  async function writeValueRobustCompat(value) {
+    const tried = []
+    let lastError = null
+    for (let round = 0; round < 2; round += 1) {
+      const candidates = Array.from(new Set(commandWriteCandidates.concat(['default'])))
+      for (let index = 0; index < candidates.length; index += 1) {
+        const candidate = candidates[index]
+        tried.push(round === 0 ? candidate : `${candidate}@refresh`)
+        try {
+          await callBleApi(uni.writeBLECharacteristicValue, buildWriteOptions(value, candidate), `write:${candidate}`)
+          if (candidate !== 'default') {
+            commandWriteType = candidate
+          }
+          if (index > 0 || round > 0) {
+            emitState(`BLE 鍐欏叆妯″紡宸插垏鎹細a003 ${candidate}`)
+          }
+          return
+        } catch (error) {
+          lastError = error
+          const message = error && error.errMsg ? error.errMsg : String(error || '')
+          debugLog('write:retry:compat', { round, candidate, message, serviceId, commandId })
+          if (message.indexOf('property not support') < 0) {
+            break
+          }
+          await sleep(120)
+        }
+      }
+      const message = String((lastError && lastError.errMsg) || lastError || '')
+      if (round === 0 && message.indexOf('property not support') >= 0) {
+        await refreshGattContext('property-not-support')
+        continue
+      }
+      break
+    }
+    throw makeError(
+      'BLE 鍐欏叆澶辫触',
+      `${(lastError && lastError.errMsg) || lastError || 'unknown error'} service=${serviceId} characteristic=${commandId} tried=${tried.join(',')}`
+    )
+  }
 
   function emitState(message) {
     debugLog('state', message)
@@ -217,7 +377,8 @@ export function createBleProvisionClient({ onDevice, onMessage, onError, onState
 
   async function init() {
     if (initialized) return
-    await promisify(uni.openBluetoothAdapter)
+    await ensureAndroidBlePermissions()
+    await callBleApi(uni.openBluetoothAdapter, {}, 'openBluetoothAdapter')
     initialized = true
     uni.onBluetoothDeviceFound(handleFound)
   }
@@ -228,9 +389,13 @@ export function createBleProvisionClient({ onDevice, onMessage, onError, onState
     emitState('正在扫描蓝牙设备')
     // Some phones do not surface 128-bit service UUIDs from scan response
     // reliably, so scan broadly and filter RoboDog/a001 in handleFound.
-    await promisify(uni.startBluetoothDevicesDiscovery, {
+    await callBleApi(
+      uni.startBluetoothDevicesDiscovery,
+      {
       allowDuplicatesKey: false
-    })
+      },
+      'startBluetoothDevicesDiscovery'
+    )
     discovering = true
   }
 
@@ -238,7 +403,7 @@ export function createBleProvisionClient({ onDevice, onMessage, onError, onState
     if (!initialized || !discovering) return
     discovering = false
     try {
-      await promisify(uni.stopBluetoothDevicesDiscovery)
+      await callBleApi(uni.stopBluetoothDevicesDiscovery, {}, 'stopBluetoothDevicesDiscovery')
     } catch (error) {}
   }
 
@@ -249,10 +414,27 @@ export function createBleProvisionClient({ onDevice, onMessage, onError, onState
     deviceId = nextDeviceId
     debugLog('connect:start', { deviceId })
     emitState('正在连接 BLE 设备')
-    await promisify(uni.createBLEConnection, { deviceId })
+    let connected = false
+    let lastError = null
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      try {
+        await callBleApi(uni.createBLEConnection, { deviceId, timeout: 12000 }, 'createBLEConnection')
+        connected = true
+        break
+      } catch (error) {
+        lastError = error
+        debugLog('connect:retry', { attempt: attempt + 1, message: error && error.errMsg ? error.errMsg : error })
+        try {
+          await callBleApi(uni.closeBLEConnection, { deviceId }, 'closeBLEConnection:retry')
+        } catch (closeError) {}
+        if (!shouldRetryConnect(error) || attempt >= 2) break
+        await sleep(500 + attempt * 400)
+      }
+    }
+    if (!connected) throw lastError || makeError('BLE 连接失败')
     await sleep(200)
     try {
-      await promisify(uni.setBLEMTU, { deviceId, mtu: 512 })
+      await callBleApi(uni.setBLEMTU, { deviceId, mtu: 512 }, 'setBLEMTU')
     } catch (error) {}
     await discoverCharacteristics()
     await enableNotify()
@@ -262,13 +444,17 @@ export function createBleProvisionClient({ onDevice, onMessage, onError, onState
   }
 
   async function discoverCharacteristics() {
-    const servicesResult = await promisify(uni.getBLEDeviceServices, { deviceId })
+    const servicesResult = await callBleApi(uni.getBLEDeviceServices, { deviceId }, 'getBLEDeviceServices')
     debugLog('services', (servicesResult.services || []).map(item => item.uuid))
     const service = (servicesResult.services || []).find(item => normalizeUuid(item.uuid) === PROVISION_SERVICE_UUID)
     if (!service) throw makeError('未发现设备配网服务')
-    serviceId = service.uuid
+    serviceId = normalizeUuid(service.uuid)
 
-    const charsResult = await promisify(uni.getBLEDeviceCharacteristics, { deviceId, serviceId })
+    const charsResult = await callBleApi(
+      uni.getBLEDeviceCharacteristics,
+      { deviceId, serviceId },
+      'getBLEDeviceCharacteristics'
+    )
     const chars = charsResult.characteristics || []
     debugLog('characteristics', chars.map(item => ({ uuid: item.uuid, properties: item.properties || {} })))
     const command = chars.find(
@@ -286,10 +472,10 @@ export function createBleProvisionClient({ onDevice, onMessage, onError, onState
       throw makeError('未发现可写入的 Command characteristic', found)
     }
     if (!notify && !wifiList) throw makeError('未发现可订阅的 Notify characteristic')
-    commandId = command.uuid
+    commandId = normalizeUuid(command.uuid)
     commandWriteCandidates = getWriteCandidates(command)
     commandWriteType = commandWriteCandidates[0] === 'default' ? 'write' : commandWriteCandidates[0]
-    notifyIds = [notify, wifiList].filter(Boolean).map(item => item.uuid)
+    notifyIds = [notify, wifiList].filter(Boolean).map(item => normalizeUuid(item.uuid))
     emitState(`BLE 特征已确认：a003 ${commandWriteType}`)
   }
 
@@ -325,23 +511,31 @@ export function createBleProvisionClient({ onDevice, onMessage, onError, onState
     }
     for (let index = 0; index < notifyIds.length; index += 1) {
       debugLog('notify:enable:start', { characteristicId: notifyIds[index] })
-      await promisify(uni.notifyBLECharacteristicValueChange, {
+      await callBleApi(
+        uni.notifyBLECharacteristicValueChange,
+        {
         deviceId,
         serviceId,
         characteristicId: notifyIds[index],
         state: true
-      })
+        },
+        `notifyBLECharacteristicValueChange:${notifyIds[index]}`
+      )
       debugLog('notify:enable:ok', { characteristicId: notifyIds[index] })
     }
   }
 
   async function readDeviceInfo() {
     try {
-      const result = await promisify(uni.readBLECharacteristicValue, {
+      const result = await callBleApi(
+        uni.readBLECharacteristicValue,
+        {
         deviceId,
         serviceId,
         characteristicId: DEVICE_INFO_UUID
-      })
+        },
+        'readBLECharacteristicValue:deviceInfo'
+      )
       if (result && result.value) {
         return JSON.parse(arrayBufferToText(result.value))
       }
@@ -363,17 +557,21 @@ export function createBleProvisionClient({ onDevice, onMessage, onError, onState
       value
     }
     try {
-      await promisify(uni.writeBLECharacteristicValue, options)
+      await callBleApi(uni.writeBLECharacteristicValue, options, `write:${commandWriteType}`)
       return
     } catch (error) {
       const message = error && error.errMsg ? error.errMsg : ''
       const alternative = commandWriteType === 'write' ? 'writeNoResponse' : 'write'
       if (message.indexOf('property not support') >= 0) {
         try {
-          await promisify(uni.writeBLECharacteristicValue, {
+          await callBleApi(
+            uni.writeBLECharacteristicValue,
+            {
             ...options,
             writeType: alternative
-          })
+            },
+            `write:${alternative}`
+          )
           commandWriteType = alternative
           emitState(`BLE 写入模式已切换：a003 ${commandWriteType}`)
           return
@@ -407,7 +605,7 @@ export function createBleProvisionClient({ onDevice, onMessage, onError, onState
       }
       tried.push(candidate)
       try {
-        await promisify(uni.writeBLECharacteristicValue, options)
+        await callBleApi(uni.writeBLECharacteristicValue, options, `write:${candidate}`)
         if (candidate !== 'default') {
           commandWriteType = candidate
         }
@@ -445,7 +643,7 @@ export function createBleProvisionClient({ onDevice, onMessage, onError, onState
     for (let index = 0; index < total; index += 1) {
       const frame = `~${frameId}${encodeFrameNumber(index)}${encodeFrameNumber(total)}:${encoded.slice(index * chunkSize, (index + 1) * chunkSize)}`
       debugLog('write:frame', { index, total, preview: previewText(frame) })
-      await writeValueRobust(textToArrayBuffer(frame))
+      await writeValueRobustCompat(textToArrayBuffer(frame))
       await sleep(18)
     }
   }
@@ -472,7 +670,7 @@ export function createBleProvisionClient({ onDevice, onMessage, onError, onState
     commandWriteCandidates = ['write', 'writeNoResponse', 'default']
     lastWifiListMessage = null
     try {
-      await promisify(uni.closeBLEConnection, { deviceId: closingDeviceId })
+      await callBleApi(uni.closeBLEConnection, { deviceId: closingDeviceId }, 'closeBLEConnection')
     } catch (error) {}
   }
 
